@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>NBYB CMMS - Control de Activos Industrial</title>
+    <title>NBYB - Control de Activos Industrial</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -176,9 +176,8 @@ function obtenerCantidadTicketsAbiertos() { return Object.keys(ticketsDB).length
 function getSucursalFromTag(tag) {
     const parts = tag.split('.');
     if (parts.length !== 3) return 'Desconocido';
-    const plantaCode = parts[1];
     const mapa = { '14':'Casa Matriz', 'BM':'BME La Vara 3310', 'PI':'Planta Industrial', 'RA':'Rancagua', 'VM':'Viña' };
-    return mapa[plantaCode] || plantaCode;
+    return mapa[parts[1]] || parts[1];
 }
 
 const decodeTag = (tag) => {
@@ -364,7 +363,7 @@ function renderInventario() {
     }
     const sortedEquipos = sortEquipos(filtrados, sortState.column, sortState.direction);
     const todosTickets = [...ticketsHistory, ...Object.values(ticketsDB).map(t => ({ ...t, status: 'open', closedAt: null, closedBy: null }))].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-    const historialTicketsHtml = todosTickets.length ? `<div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-700/50"><tr><th class="p-2">ID</th><th class="p-2">Equipo</th><th class="p-2">Descripción</th><th class="p-2">Creado por</th><th class="p-2">Creado</th><th class="p-2">Cerrado por</th><th class="p-2">Cerrado</th><th class="p-2">Estado</th></tr></thead><tbody>${todosTickets.map(t => `<tr><td class="p-2 font-mono">${t.id}</td><td class="p-2 font-mono">${t.tag}</td><td class="p-2 max-w-[150px] truncate">${t.description}</td><td class="p-2">${t.createdBy || '-'}</td><td class="text-[10px]">${t.createdAt || '-'}</td><td class="p-2">${t.closedBy || '-'}</td><td class="text-[10px]">${t.closedAt || '-'}</td><td class="p-2"><span class="px-2 py-0.5 rounded-full ${t.status === 'open' ? 'bg-red-500/30 text-red-300' : 'bg-green-500/30 text-green-300'}">${t.status === 'open' ? 'Abierto' : 'Cerrado'}</span></td></tr>`).join('')}</tbody></tr></div>` : '<div class="text-center p-4 text-slate-400">No hay tickets.</div>';
+    const historialTicketsHtml = todosTickets.length ? `<div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-700/50"><tr><th class="p-2">ID</th><th class="p-2">Equipo</th><th class="p-2">Descripción</th><th class="p-2">Creado por</th><th class="p-2">Creado</th><th class="p-2">Cerrado por</th><th class="p-2">Cerrado</th><th class="p-2">Estado</th></tr></thead><tbody>${todosTickets.map(t => `<tr><td class="p-2 font-mono">${t.id}</td><td class="p-2 font-mono">${t.tag}</td><td class="p-2 max-w-[150px] truncate">${t.description}</td><td class="p-2">${t.createdBy || '-'}</td><td class="text-[10px]">${t.createdAt || '-'}</td><td class="p-2">${t.closedBy || '-'}</td><td class="text-[10px]">${t.closedAt || '-'}</td><td class="p-2"><span class="px-2 py-0.5 rounded-full ${t.status === 'open' ? 'bg-red-500/30 text-red-300' : 'bg-green-500/30 text-green-300'}">${t.status === 'open' ? 'Abierto' : 'Cerrado'}</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="text-center p-4 text-slate-400">No hay tickets.</div>';
     
     return `<div class="space-y-5">
         <div class="inventory-table-container">
@@ -427,7 +426,7 @@ function renderInventario() {
 }
 
 // ============================================================
-// ESCANEO QR CON CÁMARA Y SUBIDA DE IMAGEN (OCR)
+// ESCANEO QR
 // ============================================================
 async function mostrarModalScanner() {
     if (html5QrCode) {
@@ -522,7 +521,7 @@ async function mostrarModalScanner() {
 function handleScan() { mostrarModalScanner(); }
 
 // ============================================================
-// RENDERIZADO PRINCIPAL (Dashboard, informes, ajustes)
+// RENDERIZADO PRINCIPAL
 // ============================================================
 function render() {
     const root=document.getElementById('root');
@@ -690,6 +689,9 @@ function attachEvents() {
     if (excelInput) excelInput.addEventListener('change', e => { if (e.target.files[0]) importarExcel(e.target.files[0]); });
 }
 
+// ============================================================
+// FUNCIONES DE EDICIÓN, COPIADO, ELIMINACIÓN Y MODALES
+// ============================================================
 function mostrarEditarEquipo(tag) {
     const equipo = equiposDB[tag];
     if (!equipo) return;
@@ -766,24 +768,6 @@ function eliminarEquipo(tag) {
     render();
 }
 
-function selectEquipo(tag) { 
-    state.currentTag = tag; 
-    state.currentEquipo = equiposDB[tag]; 
-    state.historial = historialDB[tag] || []; 
-    state.activeTab = 'dashboard'; 
-    window.history.pushState({}, '', `?tag=${tag}`); 
-    render(); 
-}
-
-function showToast(msg, type) { 
-    const toast = document.createElement('div'); 
-    toast.className = `${type === 'success' ? 'bg-emerald-600' : type === 'info' ? 'bg-blue-600' : 'bg-red-600'} text-white px-5 py-3 rounded-2xl text-sm fixed top-5 left-1/2 -translate-x-1/2 z-50 shadow-2xl`; 
-    toast.innerText = msg; 
-    document.body.appendChild(toast); 
-    setTimeout(() => toast.remove(), 3000); 
-}
-
-// Modales de tickets
 function mostrarModalCrearTicket() {
     if (!state.currentEquipo) return;
     const modal = document.createElement('div');
@@ -800,6 +784,7 @@ function mostrarModalCrearTicket() {
         cerrar();
     });
 }
+
 function mostrarModalResolverTicket() {
     if (!state.currentEquipo) return;
     const ticket = ticketsDB[state.currentTag];
@@ -820,6 +805,7 @@ function mostrarModalResolverTicket() {
         cerrar();
     });
 }
+
 function mostrarModalEstadoManual() {
     if (!state.currentEquipo) return;
     const modal = document.createElement('div');
@@ -837,6 +823,9 @@ function mostrarModalEstadoManual() {
     });
 }
 
+function selectEquipo(tag) { state.currentTag = tag; state.currentEquipo = equiposDB[tag]; state.historial = historialDB[tag] || []; state.activeTab = 'dashboard'; window.history.pushState({}, '', `?tag=${tag}`); render(); }
+function showToast(msg, type) { const toast = document.createElement('div'); toast.className = `${type === 'success' ? 'bg-emerald-600' : type === 'info' ? 'bg-blue-600' : 'bg-red-600'} text-white px-5 py-3 rounded-2xl text-sm fixed top-5 left-1/2 -translate-x-1/2 z-50 shadow-2xl`; toast.innerText = msg; document.body.appendChild(toast); setTimeout(() => toast.remove(), 3000); }
+
 function showPinScreen() {
     const root = document.getElementById('root');
     root.innerHTML = `<div class="flex flex-col items-center justify-center min-h-screen p-6"><div class="bg-slate-800 rounded-3xl p-8 w-full max-w-sm border border-slate-700 shadow-2xl"><div class="w-20 h-20 mx-auto bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl flex items-center justify-center mb-6"><i data-lucide="qrcode" class="w-10 h-10 text-white"></i></div><h2 class="text-2xl font-bold text-center mb-2">Acceso Industrial</h2><p class="text-slate-400 text-center text-sm mb-6">Ingrese clave de seguridad</p><input type="password" id="pinInput" maxlength="4" inputmode="numeric" class="w-full bg-slate-900 border border-slate-600 rounded-2xl px-5 py-4 text-center text-2xl tracking-[0.5rem] font-mono focus:ring-2 focus:ring-cyan-500 outline-none" placeholder="••••"><button id="verifyPinBtn" class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 py-3.5 rounded-2xl font-semibold mt-6 flex items-center justify-center gap-2"><i data-lucide="unlock"></i> Validar acceso</button><p class="text-center text-xs text-slate-500 mt-6">Elaborado por N. Bravo · Ingeniería y Servicios Bravo Spa</p></div></div>`;
@@ -852,32 +841,15 @@ function showPinScreen() {
 }
 
 // ============================================================
-// INICIALIZACIÓN CON MANEJO DE PARÁMETRO URL
+// INICIALIZACIÓN
 // ============================================================
-function init() {
-    loadFromLocalStorage();
-    initDefaultData();
-    // Procesar parámetro ?tag=XXX
-    const urlParams = new URLSearchParams(window.location.search);
-    const tagParam = urlParams.get('tag');
-    if (tagParam) {
-        if (equiposDB[tagParam]) {
-            selectEquipo(tagParam);
-        } else {
-            // Mostrar mensaje de error y no cargar ningún equipo
-            showToast(`❌ TAG "${tagParam}" no existe en la base de datos`, "error");
-            // Asegurar que el dashboard esté vacío
-            state.currentTag = null;
-            state.currentEquipo = null;
-            state.historial = [];
-            if (state.lotoAccepted) render();
-        }
-    }
-    if (!state.lotoAccepted) showPinScreen();
-    else render();
-}
-
-init();
+loadFromLocalStorage();
+initDefaultData();
+const urlParams = new URLSearchParams(window.location.search);
+const tagParam = urlParams.get('tag');
+if (tagParam && equiposDB[tagParam]) selectEquipo(tagParam);
+if (!state.lotoAccepted) showPinScreen();
+else render();
 </script>
 </body>
 </html>
