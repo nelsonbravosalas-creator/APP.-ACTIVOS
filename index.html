@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>NBYB - Control de Activos Industrial</title>
+    <title>NBYB CMMS - Control de Activos Industrial</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap');
         * { font-family: 'Inter', sans-serif; }
         @keyframes pulse-green { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.5);}50%{box-shadow:0 0 0 6px rgba(34,197,94,0);} }
         @keyframes pulse-red { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.6);}50%{box-shadow:0 0 0 8px rgba(239,68,68,0);} }
@@ -16,32 +17,26 @@
         .pulse-operativo { animation: pulse-green 1.8s infinite; }
         .pulse-falla { animation: pulse-red 1.2s infinite; }
         .pulse-mantenimiento { animation: pulse-amber 1.8s infinite; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em; }
-        .modal-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); }
+        .modal-overlay { background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
         .metric-card { transition: transform 0.2s; cursor: pointer; }
         .metric-card:active { transform: scale(0.97); }
         .modal-content { animation: slideUp 0.3s ease-out; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .estado-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; }
+        @keyframes slideUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
+        .estado-badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
         .estado-operativo { background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.5); }
         .estado-falla { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.5); }
         .estado-mantenimiento { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.5); }
         .estado-observacion { background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.5); }
-        .metric-premium-card { transition: all 0.2s; }
-        .metric-premium-card:hover { transform: translateY(-2px); }
-        /* Estilo sin bordes para inventario */
-        .no-border-card {
-            border: none !important;
-            box-shadow: none !important;
-            background: transparent !important;
-        }
-        .inventory-table-container {
-            background: rgba(30, 41, 59, 0.5);
-            border-radius: 1rem;
-            padding: 0.5rem;
-        }
+        .inventory-table-container { background: rgba(30,41,59,0.5); border-radius: 1rem; padding: 0.5rem; overflow-x: auto; }
+        .inventory-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; table-layout: auto; }
+        .inventory-table th, .inventory-table td { padding: 0.5rem 0.25rem; vertical-align: middle; word-break: break-word; border-bottom: 1px solid rgba(71,85,105,0.5); }
+        .inventory-table th { background: rgba(30,41,59,0.8); position: sticky; top: 0; }
+        .sortable-header { cursor: pointer; user-select: none; }
+        .sortable-header:hover { background: rgba(255,255,255,0.1); }
+        .qr-reader-region { width: 100%; min-height: 250px; background: #1e293b; border-radius: 1rem; overflow: hidden; }
+        #qr-reader { width: 100%; }
+        #qr-reader video { width: 100%; height: auto; }
+        @media (max-width: 480px) { .inventory-table { font-size: 0.65rem; } .estado-badge { font-size: 0.6rem; padding: 0.15rem 0.3rem; } }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100">
@@ -51,8 +46,8 @@
 // ============================================================
 // 1. CONFIGURACIÓN GLOBAL Y STORAGE
 // ============================================================
-let appPin = "1234";          // PIN de acceso normal
-const ADMIN_PIN = "9576";     // PIN administrador
+let appPin = "1234";
+const ADMIN_PIN = "9576";
 let equiposDB = {};
 let historialDB = {};
 let nextId = {};
@@ -61,8 +56,9 @@ let ticketsHistory = [];
 let nextTicketNumber = 1;
 let customFields = [];
 let informeFiltros = { tipo: 'TODO', valor: '' };
+let sortState = { column: 'tag', direction: 'asc' };
+let html5QrCode = null;
 
-// Estado global de la UI
 let state = {
     lotoAccepted: false,
     activeTab: 'dashboard',
@@ -126,7 +122,6 @@ function initDefaultData() {
     }
 }
 
-// Funciones auxiliares (historial, estados, tickets)
 function addHistoryEntry(tag, accion, usuario, tipo='admin') {
     if (!historialDB[tag]) historialDB[tag] = [];
     if (!nextId[tag]) nextId[tag] = 1;
@@ -178,7 +173,14 @@ function resolverTicket(tag, fechaEjecucion, servicioRealizado, informeLink) {
 
 function obtenerCantidadTicketsAbiertos() { return Object.keys(ticketsDB).length; }
 
-// Decodificación TAG
+function getSucursalFromTag(tag) {
+    const parts = tag.split('.');
+    if (parts.length !== 3) return 'Desconocido';
+    const plantaCode = parts[1];
+    const mapa = { '14':'Casa Matriz', 'BM':'BME La Vara 3310', 'PI':'Planta Industrial', 'RA':'Rancagua', 'VM':'Viña' };
+    return mapa[plantaCode] || plantaCode;
+}
+
 const decodeTag = (tag) => {
     const regionMap = { 'RM':'Metropolitana', 'V':'Valparaíso', 'VI':"O'Higgins" };
     const plantaMap = { '14':'Casa Matriz (14 de la fama)', 'BM':'BME La Vara 3310', 'PI':'Planta Industrial (La Vara 2700)', 'RA':'Rancagua', 'VM':'Viña del Mar' };
@@ -191,7 +193,6 @@ const decodeTag = (tag) => {
 };
 const getRegionFromTag = (tag) => { const p=tag.split('.'); if(p.length!==3) return 'Desconocido'; const m={'RM':'Metropolitana','V':'Valparaíso','VI':"O'Higgins"}; return m[p[0]]||p[0]; };
 
-// Métricas
 function calcularMTBF(tag) { const fallas = (historialDB[tag]||[]).filter(h=>h.accion.toLowerCase().includes('falla')||h.tipo==='alerta'); return fallas.length?Math.round(180/fallas.length):180; }
 function calcularMTTR(tag) { const reps = (historialDB[tag]||[]).filter(h=>h.accion.toLowerCase().includes('repar')||h.accion.toLowerCase().includes('cambio')); return reps.length?Math.round((4+reps.length*0.5)*10)/10:2.5; }
 function calcularDisponibilidad(mtbf,mttr) { if(!mtbf||!mttr) return 98.5; return Math.round((mtbf/(mtbf+mttr))*100*10)/10; }
@@ -214,9 +215,6 @@ function mostrarEquiposPorEstado(estado, titulo, color) {
     document.querySelectorAll('.equipo-lista-item').forEach(item=>{item.addEventListener('click',()=>{const tag=item.dataset.tag; if(tag&&equiposDB[tag]){ selectEquipo(tag); cerrar(); }});});
 }
 
-// ============================================================
-// 3. GESTIÓN DE COLUMNAS PERSONALIZADAS (ADMIN)
-// ============================================================
 function mostrarGestionColumnas() {
     const modal=document.createElement('div'); modal.className='fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
     let fieldsHtml='';
@@ -265,17 +263,14 @@ function mostrarGestionColumnas() {
     });
 }
 
-// ============================================================
-// 4. IMPORTAR/EXPORTAR EXCEL (CON CAMPOS PERSONALIZADOS)
-// ============================================================
 function exportarInventarioExcel() {
     const equipos=Object.values(equiposDB);
-    const baseCols=['TAG_ID','REGIÓN','UBICACIÓN','MARCA','MODELO','ESTADO','CAPACIDAD_BTU','SERIE','ÚLTIMO MANTENIMIENTO','PRÓXIMO MANTENIMIENTO','REFRIGERANTE','OBSERVACIONES'];
+    const baseCols=['TAG_ID','REGIÓN','Sucursal','UBICACIÓN','MARCA','ESTADO','CAPACIDAD_BTU','SERIE','ÚLTIMO MANTENIMIENTO','PRÓXIMO MANTENIMIENTO','REFRIGERANTE','OBSERVACIONES'];
     const customCols=customFields.map(cf=>cf.fieldLabel);
     const allCols=[...baseCols,...customCols];
     const data=equipos.map(e=>{
         const row={
-            'TAG_ID':e.tag, 'REGIÓN':getRegionFromTag(e.tag), 'UBICACIÓN':e.lugarInstalacion, 'MARCA':e.marca, 'MODELO':e.modelo,
+            'TAG_ID':e.tag, 'REGIÓN':getRegionFromTag(e.tag), 'Sucursal':getSucursalFromTag(e.tag), 'UBICACIÓN':e.lugarInstalacion, 'MARCA':e.marca, 'MODELO':e.modelo,
             'ESTADO':e.estado, 'CAPACIDAD_BTU':e.capacidad, 'SERIE':e.serie, 'ÚLTIMO MANTENIMIENTO':e.ultimoMantenimiento,
             'PRÓXIMO MANTENIMIENTO':e.proximoMantenimiento, 'REFRIGERANTE':e.refrigerante, 'OBSERVACIONES':e.observaciones
         };
@@ -334,8 +329,200 @@ function descargarPlantillaExcel(){
     showToast("Plantilla descargada","success");
 }
 
+function sortEquipos(equipos, column, direction) {
+    return [...equipos].sort((a, b) => {
+        let valA, valB;
+        switch(column) {
+            case 'tag': valA = a.tag; valB = b.tag; break;
+            case 'region': valA = getRegionFromTag(a.tag); valB = getRegionFromTag(b.tag); break;
+            case 'sucursal': valA = getSucursalFromTag(a.tag); valB = getSucursalFromTag(b.tag); break;
+            case 'ubicacion': valA = a.lugarInstalacion || ''; valB = b.lugarInstalacion || ''; break;
+            case 'marca': valA = a.marca || ''; valB = b.marca || ''; break;
+            case 'estado': valA = a.estado || ''; valB = b.estado || ''; break;
+            case 'capacidad': valA = a.capacidad || ''; valB = b.capacidad || ''; break;
+            default: valA = a.tag; valB = b.tag;
+        }
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return direction === 'asc' ? -1 : 1;
+        if (valA > valB) return direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+}
+
+function renderInventario() {
+    const equipos = Object.values(equiposDB);
+    let filtrados = equipos;
+    if (informeFiltros.tipo !== 'TODO' && informeFiltros.valor) {
+        const v = informeFiltros.valor.toLowerCase();
+        if (informeFiltros.tipo === 'TAG_ID') filtrados = equipos.filter(e => e.tag.toLowerCase().includes(v));
+        else if (informeFiltros.tipo === 'REGION') filtrados = equipos.filter(e => getRegionFromTag(e.tag).toLowerCase().includes(v));
+        else if (informeFiltros.tipo === 'SUCURSAL') filtrados = equipos.filter(e => getSucursalFromTag(e.tag).toLowerCase().includes(v));
+        else if (informeFiltros.tipo === 'UBICACIÓN') filtrados = equipos.filter(e => e.lugarInstalacion.toLowerCase().includes(v));
+        else if (informeFiltros.tipo === 'MARCA') filtrados = equipos.filter(e => e.marca.toLowerCase().includes(v));
+        else if (informeFiltros.tipo === 'ESTADO') filtrados = equipos.filter(e => e.estado.toLowerCase().includes(v));
+    }
+    const sortedEquipos = sortEquipos(filtrados, sortState.column, sortState.direction);
+    const todosTickets = [...ticketsHistory, ...Object.values(ticketsDB).map(t => ({ ...t, status: 'open', closedAt: null, closedBy: null }))].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const historialTicketsHtml = todosTickets.length ? `<div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-700/50"><tr><th class="p-2">ID</th><th class="p-2">Equipo</th><th class="p-2">Descripción</th><th class="p-2">Creado por</th><th class="p-2">Creado</th><th class="p-2">Cerrado por</th><th class="p-2">Cerrado</th><th class="p-2">Estado</th></tr></thead><tbody>${todosTickets.map(t => `<tr><td class="p-2 font-mono">${t.id}</td><td class="p-2 font-mono">${t.tag}</td><td class="p-2 max-w-[150px] truncate">${t.description}</td><td class="p-2">${t.createdBy || '-'}</td><td class="text-[10px]">${t.createdAt || '-'}</td><td class="p-2">${t.closedBy || '-'}</td><td class="text-[10px]">${t.closedAt || '-'}</td><td class="p-2"><span class="px-2 py-0.5 rounded-full ${t.status === 'open' ? 'bg-red-500/30 text-red-300' : 'bg-green-500/30 text-green-300'}">${t.status === 'open' ? 'Abierto' : 'Cerrado'}</span></td></tr>`).join('')}</tbody></tr></div>` : '<div class="text-center p-4 text-slate-400">No hay tickets.</div>';
+    
+    return `<div class="space-y-5">
+        <div class="inventory-table-container">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-lg flex items-center gap-2"><i data-lucide="clipboard-list"></i> Inventario de Equipos</h2>
+                <button id="exportarInventarioBtn" class="text-xs bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-xl transition">Exportar Excel</button>
+            </div>
+            <div class="mb-4 flex flex-wrap gap-2">
+                <select id="filtroTipo" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-2 text-sm">
+                    <option value="TODO" ${informeFiltros.tipo === 'TODO' ? 'selected' : ''}>TODO</option>
+                    <option value="TAG_ID" ${informeFiltros.tipo === 'TAG_ID' ? 'selected' : ''}>TAG_ID</option>
+                    <option value="REGION" ${informeFiltros.tipo === 'REGION' ? 'selected' : ''}>REGIÓN</option>
+                    <option value="SUCURSAL" ${informeFiltros.tipo === 'SUCURSAL' ? 'selected' : ''}>SUCURSAL</option>
+                    <option value="UBICACIÓN" ${informeFiltros.tipo === 'UBICACIÓN' ? 'selected' : ''}>UBICACIÓN</option>
+                    <option value="MARCA" ${informeFiltros.tipo === 'MARCA' ? 'selected' : ''}>MARCA</option>
+                    <option value="ESTADO" ${informeFiltros.tipo === 'ESTADO' ? 'selected' : ''}>ESTADO</option>
+                </select>
+                <input id="filtroValor" placeholder="Buscar..." value="${informeFiltros.valor}" class="flex-2 bg-slate-800 border border-slate-700 rounded-xl p-2 text-sm">
+                <button id="limpiarFiltrosBtn" class="bg-slate-700 hover:bg-slate-600 px-3 rounded-xl">✕</button>
+            </div>
+            <div class="text-[10px] text-slate-400 mb-2">${sortedEquipos.length} equipos encontrados</div>
+            <table class="inventory-table">
+                <thead>
+                    <tr>
+                        <th class="sortable-header" data-sort="tag">TAG_ID ${sortState.column === 'tag' ? (sortState.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                        <th class="sortable-header" data-sort="region">REGIÓN ${sortState.column === 'region' ? (sortState.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                        <th class="sortable-header" data-sort="sucursal">Sucursal ${sortState.column === 'sucursal' ? (sortState.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                        <th class="sortable-header" data-sort="ubicacion">UBICACIÓN ${sortState.column === 'ubicacion' ? (sortState.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                        <th class="sortable-header" data-sort="marca">MARCA ${sortState.column === 'marca' ? (sortState.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                        <th class="sortable-header" data-sort="estado">ESTADO ${sortState.column === 'estado' ? (sortState.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                        <th class="sortable-header" data-sort="capacidad">CAPACIDAD ${sortState.column === 'capacidad' ? (sortState.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                        <th>ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sortedEquipos.map(e => `
+                        <tr class="equipo-row hover:bg-slate-800/40 cursor-pointer" data-tag="${e.tag}">
+                            <td class="font-mono">${e.tag}</td>
+                            <td>${getRegionFromTag(e.tag)}</td>
+                            <td>${getSucursalFromTag(e.tag)}</td>
+                            <td>${e.lugarInstalacion?.substring(0, 35) || '-'}</td>
+                            <td>${e.marca}</td>
+                            <td><span class="estado-badge ${e.estado === 'OPERATIVO' ? 'estado-operativo' : e.estado === 'EN FALLA' ? 'estado-falla' : e.estado === 'MANTENIMIENTO' ? 'estado-mantenimiento' : 'estado-observacion'}">${e.estado === 'OPERATIVO' ? '🟢' : e.estado === 'EN FALLA' ? '🔴' : e.estado === 'MANTENIMIENTO' ? '🟡' : '🔵'} ${e.estado}</span></td>
+                            <td>${e.capacidad}</td>
+                            <td class="text-center">
+                                <button class="action-edit text-blue-400 hover:text-blue-300 mx-1" data-tag="${e.tag}" title="Editar"><i data-lucide="edit-2" class="w-4 h-4 inline"></i></button>
+                                <button class="action-copy text-emerald-400 hover:text-emerald-300 mx-1" data-tag="${e.tag}" title="Copiar"><i data-lucide="copy" class="w-4 h-4 inline"></i></button>
+                                <button class="action-delete text-red-400 hover:text-red-300 mx-1" data-tag="${e.tag}" title="Eliminar"><i data-lucide="trash-2" class="w-4 h-4 inline"></i></button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        <div class="bg-slate-800/50 rounded-2xl p-4">
+            <div class="flex items-center gap-2 mb-3"><i data-lucide="ticket" class="text-cyan-400"></i><h2 class="font-bold text-lg">Historial de Tickets</h2></div>
+            ${historialTicketsHtml}
+        </div>
+    </div>`;
+}
+
 // ============================================================
-// 5. RENDERIZADO PRINCIPAL (DASHBOARD, INFORMES, AJUSTES)
+// ESCANEO QR CON CÁMARA Y SUBIDA DE IMAGEN (OCR)
+// ============================================================
+async function mostrarModalScanner() {
+    if (html5QrCode) {
+        try { await html5QrCode.stop(); } catch(e) {}
+        html5QrCode = null;
+    }
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="bg-slate-800 rounded-2xl max-w-md w-full border border-slate-600 shadow-2xl modal-content">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="qrcode"></i> Escanear QR</h3>
+                <button id="closeScannerBtn" class="p-1 rounded-full bg-slate-700 hover:bg-slate-600">✕</button>
+            </div>
+            <div class="p-4">
+                <div class="flex gap-2 mb-4">
+                    <button id="modoCameraBtn" class="flex-1 bg-cyan-600 hover:bg-cyan-500 py-2 rounded-xl transition">📷 Cámara</button>
+                    <button id="modoImagenBtn" class="flex-1 bg-slate-700 hover:bg-slate-600 py-2 rounded-xl transition">🖼️ Subir imagen</button>
+                </div>
+                <div id="scannerContainer" class="qr-reader-region">
+                    <div class="text-center text-slate-400 p-8">Selecciona un modo para comenzar</div>
+                </div>
+                <p class="text-xs text-slate-400 mt-3 text-center">El código debe contener el TAG del equipo (ej: RM.14.001)</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    lucide.createIcons();
+    const closeModal = () => {
+        if (html5QrCode) { html5QrCode.stop().catch(console.warn); html5QrCode = null; }
+        modal.remove();
+    };
+    document.getElementById('closeScannerBtn')?.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    const scannerContainer = document.getElementById('scannerContainer');
+    const modoCameraBtn = document.getElementById('modoCameraBtn');
+    const modoImagenBtn = document.getElementById('modoImagenBtn');
+    const procesarResultado = (decodedText) => {
+        const tag = decodedText.trim();
+        if (equiposDB[tag]) {
+            selectEquipo(tag);
+            closeModal();
+            showToast(`✅ Equipo ${tag} cargado`, 'success');
+        } else {
+            showToast(`❌ TAG "${tag}" no encontrado en la base de datos`, 'error');
+        }
+    };
+    modoCameraBtn.addEventListener('click', async () => {
+        scannerContainer.innerHTML = '<div id="qr-reader" style="width:100%"></div>';
+        try {
+            if (html5QrCode) { await html5QrCode.stop(); html5QrCode = null; }
+            html5QrCode = new Html5Qrcode("qr-reader");
+            await html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => procesarResultado(decodedText),
+                (errorMessage) => {}
+            );
+        } catch (err) {
+            scannerContainer.innerHTML = `<div class="text-center text-red-400 p-4">Error al acceder a la cámara: ${err.message}<br><button id="retryCameraBtn" class="mt-2 bg-cyan-600 px-3 py-1 rounded-lg">Reintentar</button></div>`;
+            document.getElementById('retryCameraBtn')?.addEventListener('click', () => modoCameraBtn.click());
+        }
+    });
+    modoImagenBtn.addEventListener('click', () => {
+        scannerContainer.innerHTML = `
+            <div class="p-4 text-center">
+                <input type="file" id="qrImageInput" accept="image/*" capture="environment" class="hidden">
+                <button id="seleccionarImagenBtn" class="bg-cyan-600 px-4 py-2 rounded-xl flex items-center gap-2 mx-auto"><i data-lucide="image"></i> Seleccionar imagen</button>
+                <div id="previewImage" class="mt-3"></div>
+            </div>
+        `;
+        lucide.createIcons();
+        const fileInput = document.getElementById('qrImageInput');
+        const seleccionarBtn = document.getElementById('seleccionarImagenBtn');
+        seleccionarBtn?.addEventListener('click', () => fileInput.click());
+        fileInput?.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const previewDiv = document.getElementById('previewImage');
+            previewDiv.innerHTML = '<div class="text-slate-300">Procesando imagen...</div>';
+            try {
+                const decodedText = await Html5Qrcode.scanFile(file, true);
+                procesarResultado(decodedText);
+            } catch (err) {
+                previewDiv.innerHTML = `<div class="text-red-400">No se pudo leer el código QR. Intenta con otra imagen.</div>`;
+                showToast("No se encontró un código QR válido", "error");
+            }
+        });
+    });
+}
+
+function handleScan() { mostrarModalScanner(); }
+
+// ============================================================
+// RENDERIZADO PRINCIPAL (Dashboard, informes, ajustes)
 // ============================================================
 function render() {
     const root=document.getElementById('root');
@@ -367,81 +554,12 @@ function renderMetricasAvanzadas(){
     return `<div class="bg-gradient-to-r from-slate-800/50 to-slate-800/30 rounded-2xl p-4 border border-slate-700 mb-5"><div class="flex items-center gap-2 mb-3"><i data-lucide="gauge"></i><h3 class="font-bold text-sm">Métricas de Confiabilidad</h3><span class="text-[10px] bg-cyan-500/20 px-2 py-0.5 rounded-full">Premium</span></div><div class="grid grid-cols-2 gap-3"><div class="metric-premium-card bg-slate-900/50 rounded-xl p-2 text-center"><p class="text-[9px] uppercase">MTBF</p><p class="text-lg font-black text-cyan-400">${mtbf||'N/A'}</p><p class="text-[8px]">días</p><div class="w-full bg-slate-700 rounded-full h-1 mt-1"><div class="bg-cyan-500 h-1 rounded-full" style="width:${Math.min(100,(mtbf||90)/1.5)}%"></div></div></div><div class="metric-premium-card bg-slate-900/50 rounded-xl p-2 text-center"><p class="text-[9px] uppercase">MTTR</p><p class="text-lg font-black text-amber-400">${mttr||'N/A'}</p><p class="text-[8px]">horas</p><div class="w-full bg-slate-700 rounded-full h-1 mt-1"><div class="bg-amber-500 h-1 rounded-full" style="width:${Math.min(100,(mttr||2.5)*12)}%"></div></div></div><div class="metric-premium-card bg-slate-900/50 rounded-xl p-2 text-center"><p class="text-[9px] uppercase">Disponibilidad</p><p class="text-lg font-black ${disp>=95?'text-green-400':disp>=85?'text-yellow-400':'text-red-400'}">${disp||'98.5'}%</p><p class="text-[8px]">objetivo >95%</p><div class="w-full bg-slate-700 rounded-full h-1 mt-1"><div class="${disp>=95?'bg-green-500':disp>=85?'bg-yellow-500':'bg-red-500'} h-1 rounded-full" style="width:${disp||98.5}%"></div></div></div><div class="metric-premium-card ${tendencia.bg} rounded-xl p-2 text-center"><p class="text-[9px] uppercase">Tendencia 30d</p><p class="text-2xl font-black ${tendencia.color}">${tendencia.tendencia}</p><p class="text-[8px]">${tendencia.mensaje}</p></div></div></div><div class="grid grid-cols-2 gap-3 mb-5"><div class="metric-premium-card bg-slate-800/60 rounded-xl p-3"><div class="flex justify-between"><div><p class="text-[10px]">Mantenimiento</p><p class="text-lg font-bold"><span class="text-green-400">${ratio.preventivos}%</span> / <span class="text-orange-400">${ratio.correctivos}%</span></p></div><div class="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center"><i data-lucide="pie-chart"></i></div></div><p class="text-[9px]">Preventivo / Correctivo</p><div class="w-full bg-slate-700 rounded-full h-1 mt-1"><div class="bg-green-500 h-1 rounded-full" style="width:${ratio.preventivos}%"></div></div></div><div class="metric-premium-card bg-slate-800/60 rounded-xl p-3"><div class="flex justify-between"><div><p class="text-[10px]">Cumplimiento</p><p class="text-lg font-bold text-cyan-400">${cumplimiento}%</p></div><div class="w-8 h-8 bg-purple-500/20 rounded-full flex items-center justify-center"><i data-lucide="calendar-check"></i></div></div><p class="text-[9px]">Mant. al día</p><div class="w-full bg-slate-700 rounded-full h-1 mt-1"><div class="bg-cyan-500 h-1 rounded-full" style="width:${cumplimiento}%"></div></div></div></div>${alertas.length?`<div class="bg-red-950/30 border border-red-500/30 rounded-xl p-3 mb-5"><div class="flex items-center gap-2 mb-2"><i data-lucide="bell"></i><span class="text-xs font-bold text-red-400">Alertas</span></div>${alertas.map(a=>`<div class="flex items-center gap-2 text-xs ${a.color}"><span>${a.tipo}</span><span>${a.mensaje}</span></div>`).join('')}</div>`:`<div class="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-3 mb-5"><div class="flex items-center gap-2"><i data-lucide="check-circle"></i><span class="text-xs text-emerald-400">✓ Sin alertas</span></div></div>`}`;
 }
 
-// Nueva función renderInventario sin bordes y con botones de acción (Editar, Copiar, Eliminar)
-function renderInventario() {
-    const equipos = Object.values(equiposDB);
-    let filtrados = equipos;
-    if (informeFiltros.tipo !== 'TODO' && informeFiltros.valor) {
-        const v = informeFiltros.valor.toLowerCase();
-        if (informeFiltros.tipo === 'TAG_ID') filtrados = equipos.filter(e => e.tag.toLowerCase().includes(v));
-        else if (informeFiltros.tipo === 'REGION') filtrados = equipos.filter(e => getRegionFromTag(e.tag).toLowerCase().includes(v));
-        else if (informeFiltros.tipo === 'UBICACIÓN') filtrados = equipos.filter(e => e.lugarInstalacion.toLowerCase().includes(v));
-        else if (informeFiltros.tipo === 'MARCA') filtrados = equipos.filter(e => e.marca.toLowerCase().includes(v));
-        else if (informeFiltros.tipo === 'ESTADO') filtrados = equipos.filter(e => e.estado.toLowerCase().includes(v));
-    }
-    const todosTickets = [...ticketsHistory, ...Object.values(ticketsDB).map(t => ({ ...t, status: 'open', closedAt: null, closedBy: null }))].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-    const historialTicketsHtml = todosTickets.length ? `<div class="table-scroll"><table class="w-full text-xs"><thead class="bg-slate-700/50"><tr><th>ID</th><th>Equipo</th><th>Descripción</th><th>Creado por</th><th>Creado</th><th>Cerrado por</th><th>Cerrado</th><th>Estado</th></tr></thead><tbody>${todosTickets.map(t => `<tr><td class="p-2 font-mono">${t.id}</td><td class="p-2 font-mono">${t.tag}</td><td class="p-2 max-w-[150px] truncate">${t.description}</td><td>${t.createdBy || '-'}</td><td class="text-[10px]">${t.createdAt || '-'}</td><td>${t.closedBy || '-'}</td><td class="text-[10px]">${t.closedAt || '-'}</td><td><span class="px-2 py-0.5 rounded-full ${t.status === 'open' ? 'bg-red-500/30 text-red-300' : 'bg-green-500/30 text-green-300'}">${t.status === 'open' ? 'Abierto' : 'Cerrado'}</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="text-center p-4 text-slate-400">No hay tickets.</div>';
-    
-    // Tarjeta sin bordes: eliminamos border, shadow, fondo transparente
-    return `<div class="space-y-5">
-        <div class="inventory-table-container">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="font-bold text-lg flex items-center gap-2"><i data-lucide="clipboard-list"></i> Inventario de Equipos</h2>
-                <button id="exportarInventarioBtn" class="text-xs bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-xl transition">Exportar Excel</button>
-            </div>
-            <div class="mb-4 flex flex-wrap gap-2">
-                <select id="filtroTipo" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-2 text-sm">
-                    <option value="TODO" ${informeFiltros.tipo === 'TODO' ? 'selected' : ''}>TODO</option>
-                    <option value="TAG_ID" ${informeFiltros.tipo === 'TAG_ID' ? 'selected' : ''}>TAG_ID</option>
-                    <option value="REGION" ${informeFiltros.tipo === 'REGION' ? 'selected' : ''}>REGIÓN</option>
-                    <option value="UBICACIÓN" ${informeFiltros.tipo === 'UBICACIÓN' ? 'selected' : ''}>UBICACIÓN</option>
-                    <option value="MARCA" ${informeFiltros.tipo === 'MARCA' ? 'selected' : ''}>MARCA</option>
-                    <option value="ESTADO" ${informeFiltros.tipo === 'ESTADO' ? 'selected' : ''}>ESTADO</option>
-                </select>
-                <input id="filtroValor" placeholder="Buscar..." value="${informeFiltros.valor}" class="flex-2 bg-slate-800 border border-slate-700 rounded-xl p-2 text-sm">
-                <button id="limpiarFiltrosBtn" class="bg-slate-700 hover:bg-slate-600 px-3 rounded-xl">✕</button>
-            </div>
-            <div class="text-[10px] text-slate-400 mb-2">${filtrados.length} equipos encontrados</div>
-            <div class="table-scroll">
-                <table class="w-full text-sm">
-                    <thead class="bg-slate-800/80 sticky top-0">
-                        <tr class="border-b border-slate-700">
-                            <th class="p-2 text-left">TAG_ID</th><th class="p-2 text-left">REGIÓN</th><th class="p-2 text-left">UBICACIÓN</th><th class="p-2 text-left">MARCA</th><th class="p-2 text-left">ESTADO</th><th class="p-2 text-left">CAPACIDAD</th><th class="p-2 text-center">ACCIONES</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${filtrados.map(e => `
-                            <tr class="border-b border-slate-700/50 hover:bg-slate-800/40 equipo-row" data-tag="${e.tag}">
-                                <td class="p-2 font-mono">${e.tag}</td>
-                                <td class="p-2">${getRegionFromTag(e.tag)}</td>
-                                <td class="p-2">${e.lugarInstalacion?.substring(0, 20) || '-'}</td>
-                                <td class="p-2">${e.marca}</td>
-                                <td class="p-2"><span class="estado-badge ${e.estado === 'OPERATIVO' ? 'estado-operativo' : e.estado === 'EN FALLA' ? 'estado-falla' : e.estado === 'MANTENIMIENTO' ? 'estado-mantenimiento' : 'estado-observacion'}">${e.estado === 'OPERATIVO' ? '🟢' : e.estado === 'EN FALLA' ? '🔴' : e.estado === 'MANTENIMIENTO' ? '🟡' : '🔵'} ${e.estado}</span></td>
-                                <td class="p-2">${e.capacidad}</td>
-                                <td class="p-2 text-center">
-                                    <button class="action-edit text-blue-400 hover:text-blue-300 mx-1" data-tag="${e.tag}" title="Editar"><i data-lucide="edit-2" class="w-4 h-4 inline"></i></button>
-                                    <button class="action-copy text-emerald-400 hover:text-emerald-300 mx-1" data-tag="${e.tag}" title="Copiar"><i data-lucide="copy" class="w-4 h-4 inline"></i></button>
-                                    <button class="action-delete text-red-400 hover:text-red-300 mx-1" data-tag="${e.tag}" title="Eliminar"><i data-lucide="trash-2" class="w-4 h-4 inline"></i></button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="bg-slate-800/50 rounded-2xl p-4">
-            <div class="flex items-center gap-2 mb-3"><i data-lucide="ticket" class="text-cyan-400"></i><h2 class="font-bold text-lg">Historial de Tickets</h2></div>
-            ${historialTicketsHtml}
-        </div>
-    </div>`;
-}
-
 function renderAjustesContent() {
     return `<div class="space-y-4"><div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700"><h2 class="font-bold text-lg flex gap-2 mb-3"><i data-lucide="settings"></i> Configuración</h2><div class="mb-5 p-3 bg-cyan-950/30 rounded-xl border border-cyan-500/30"><p class="font-semibold text-cyan-400 flex gap-2 mb-2"><i data-lucide="file-spreadsheet"></i> Gestión de Datos Excel</p><button id="downloadPlantillaBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl mb-2 flex gap-2 justify-center"><i data-lucide="download"></i> Descargar Plantilla</button><label class="flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 py-2.5 rounded-xl cursor-pointer"><i data-lucide="upload"></i> Importar Excel<input type="file" id="excelUploadInput" accept=".xlsx,.xls,.csv" class="hidden"></label></div>${state.userProfile==='advanced'?`<div class="space-y-3"><button id="gestionarColumnasBtn" class="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl flex gap-2 justify-center"><i data-lucide="table-properties"></i> Gestionar Columnas Personalizadas</button><button id="cambiarPinBtn" class="w-full bg-amber-600 hover:bg-amber-500 py-2.5 rounded-xl flex gap-2 justify-center"><i data-lucide="key"></i> Cambiar PIN de Acceso</button><button id="editCurrentEquipoBtn" class="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-xl flex gap-2 justify-center"><i data-lucide="edit"></i> Editar observaciones</button><button id="createNewEquipoBtn" class="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-xl flex gap-2 justify-center"><i data-lucide="plus-circle"></i> Crear nuevo equipo</button><button id="generateQrBtn" class="w-full bg-amber-700/80 hover:bg-amber-700 py-2.5 rounded-xl flex gap-2 justify-center"><i data-lucide="download"></i> Generar QR (8x5cm)</button></div>`:`<div class="text-center py-4"><i data-lucide="lock" class="w-12 h-12 mx-auto text-slate-500 mb-2"></i><p class="text-sm">Acceso solo lectura. Clave Ingeniería SYM para edición.</p></div>`}</div></div>`;
 }
 
 // ============================================================
-// 6. EVENTOS Y MANEJADORES (incluyendo acciones de inventario)
+// MANEJADORES DE EVENTOS
 // ============================================================
 function attachEvents() {
     document.getElementById('acceptLotoBtn')?.addEventListener('click', () => { state.lotoAccepted = true; render(); });
@@ -469,17 +587,27 @@ function attachEvents() {
     if (limpiar) limpiar.addEventListener('click', () => { informeFiltros = { tipo: 'TODO', valor: '' }; render(); });
     if (exportar) exportar.addEventListener('click', () => exportarInventarioExcel());
     
-    // Eventos para las filas de la tabla (navegación)
+    document.querySelectorAll('.sortable-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            const sortColumn = header.dataset.sort;
+            if (sortColumn === sortState.column) {
+                sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortState.column = sortColumn;
+                sortState.direction = 'asc';
+            }
+            render();
+        });
+    });
+    
     document.querySelectorAll('.equipo-row').forEach(row => {
         row.addEventListener('click', (e) => {
-            // Evitar que el clic en los botones de acción dispare la navegación
             if (e.target.closest('.action-edit') || e.target.closest('.action-copy') || e.target.closest('.action-delete')) return;
             const tag = row.dataset.tag;
             if (tag && equiposDB[tag]) selectEquipo(tag);
         });
     });
     
-    // Botones de acción: Editar, Copiar, Eliminar (requieren PIN 9576)
     document.querySelectorAll('.action-edit').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -510,7 +638,6 @@ function attachEvents() {
         });
     });
     
-    // Otros botones (tickets, etc.)
     document.getElementById('levantarTicketBtn')?.addEventListener('click', () => mostrarModalCrearTicket());
     document.getElementById('resolverTicketBtn')?.addEventListener('click', () => mostrarModalResolverTicket());
     document.getElementById('cambiarEstadoBtn')?.addEventListener('click', () => mostrarModalEstadoManual());
@@ -563,11 +690,9 @@ function attachEvents() {
     if (excelInput) excelInput.addEventListener('change', e => { if (e.target.files[0]) importarExcel(e.target.files[0]); });
 }
 
-// Funciones de edición, copia y eliminación
 function mostrarEditarEquipo(tag) {
     const equipo = equiposDB[tag];
     if (!equipo) return;
-    // Crear un modal simple para editar campos clave
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
     modal.innerHTML = `
@@ -631,7 +756,6 @@ function eliminarEquipo(tag) {
     delete historialDB[tag];
     delete nextId[tag];
     delete ticketsDB[tag];
-    // No eliminar ticketsHistory, se mantiene histórico
     if (state.currentTag === tag) {
         state.currentTag = null;
         state.currentEquipo = null;
@@ -642,18 +766,28 @@ function eliminarEquipo(tag) {
     render();
 }
 
-function selectEquipo(tag) { state.currentTag = tag; state.currentEquipo = equiposDB[tag]; state.historial = historialDB[tag] || []; state.activeTab = 'dashboard'; window.history.pushState({}, '', `?tag=${tag}`); render(); }
-function handleScan() { const t = prompt("📷 Escanear QR o TAG:"); if (t && equiposDB[t]) selectEquipo(t); else if (t) showToast("❌ Equipo no encontrado", "error"); }
-function showToast(msg, type) { const toast = document.createElement('div'); toast.className = `${type === 'success' ? 'bg-emerald-600' : type === 'info' ? 'bg-blue-600' : 'bg-red-600'} text-white px-5 py-3 rounded-2xl text-sm fixed top-5 left-1/2 -translate-x-1/2 z-50 shadow-2xl`; toast.innerText = msg; document.body.appendChild(toast); setTimeout(() => toast.remove(), 3000); }
+function selectEquipo(tag) { 
+    state.currentTag = tag; 
+    state.currentEquipo = equiposDB[tag]; 
+    state.historial = historialDB[tag] || []; 
+    state.activeTab = 'dashboard'; 
+    window.history.pushState({}, '', `?tag=${tag}`); 
+    render(); 
+}
 
-// Modales de tickets (sin cambios)
-function mostrarModalCrearTicket() { /* igual que antes */ }
-function mostrarModalResolverTicket() { /* igual */ }
-function mostrarModalEstadoManual() { /* igual */ }
-// Implementaciones rápidas de los modales (similares a la versión anterior)
+function showToast(msg, type) { 
+    const toast = document.createElement('div'); 
+    toast.className = `${type === 'success' ? 'bg-emerald-600' : type === 'info' ? 'bg-blue-600' : 'bg-red-600'} text-white px-5 py-3 rounded-2xl text-sm fixed top-5 left-1/2 -translate-x-1/2 z-50 shadow-2xl`; 
+    toast.innerText = msg; 
+    document.body.appendChild(toast); 
+    setTimeout(() => toast.remove(), 3000); 
+}
+
+// Modales de tickets
 function mostrarModalCrearTicket() {
     if (!state.currentEquipo) return;
-    const modal = document.createElement('div'); modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
     modal.innerHTML = `<div class="bg-slate-800 rounded-2xl p-6 max-w-sm w-full border border-slate-600 shadow-2xl"><div class="flex justify-between mb-4"><h3 class="text-xl font-bold">Levantar Ticket</h3><button id="closeModalBtn" class="p-1 rounded-full bg-slate-700">✕</button></div><textarea id="ticketDesc" rows="3" class="w-full bg-slate-700 rounded-xl p-2" placeholder="Descripción de la falla..."></textarea><div class="flex gap-3 mt-4"><button id="confirmarTicketBtn" class="flex-1 bg-cyan-600 py-2 rounded-xl">Crear</button><button id="cancelarModalBtn" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button></div></div>`;
     document.body.appendChild(modal); lucide.createIcons();
     const cerrar = () => modal.remove();
@@ -670,8 +804,9 @@ function mostrarModalResolverTicket() {
     if (!state.currentEquipo) return;
     const ticket = ticketsDB[state.currentTag];
     if (!ticket) { showToast("No hay ticket abierto", "error"); return; }
-    const hoy = new Date().toISOString().slice(0, 10);
-    const modal = document.createElement('div'); modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
+    const hoy = new Date().toISOString().slice(0,10);
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
     modal.innerHTML = `<div class="bg-slate-800 rounded-2xl p-6 max-w-sm w-full border border-slate-600 shadow-2xl"><div class="flex justify-between mb-4"><h3 class="text-xl font-bold">Resolver ${ticket.id}</h3><button id="closeModalBtn" class="p-1 rounded-full bg-slate-700">✕</button></div><div class="p-2 bg-slate-700/50 rounded mb-2"><p class="text-xs">${ticket.description}</p><p class="text-xs text-slate-400">Creado por ${ticket.createdBy} el ${ticket.createdAt}</p></div><label class="text-sm">Fecha ejecución</label><input type="date" id="fechaEjecucion" value="${hoy}" class="w-full bg-slate-700 rounded-xl p-2 mb-2"><label class="text-sm">Servicio realizado</label><textarea id="servicioRealizado" rows="2" class="w-full bg-slate-700 rounded-xl p-2 mb-2"></textarea><label class="text-sm">Informe/foto URL</label><input id="informeLink" class="w-full bg-slate-700 rounded-xl p-2 mb-3"><div class="flex gap-3"><button id="confirmarResolucionBtn" class="flex-1 bg-emerald-600 py-2 rounded-xl">Resolver</button><button id="cancelarModalBtn" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button></div></div>`;
     document.body.appendChild(modal); lucide.createIcons();
     const cerrar = () => modal.remove();
@@ -687,7 +822,8 @@ function mostrarModalResolverTicket() {
 }
 function mostrarModalEstadoManual() {
     if (!state.currentEquipo) return;
-    const modal = document.createElement('div'); modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4';
     modal.innerHTML = `<div class="bg-slate-800 rounded-2xl p-6 max-w-sm w-full border border-slate-600 shadow-2xl"><div class="flex justify-between mb-4"><h3 class="text-xl font-bold">Cambiar Estado</h3><button id="closeModalBtn" class="p-1 rounded-full bg-slate-700">✕</button></div><select id="estadoSelect" class="w-full bg-slate-700 rounded-xl p-3 mb-4"><option value="OPERATIVO">🟢 OPERATIVO</option><option value="MANTENIMIENTO">🟡 MANTENIMIENTO</option><option value="EN FALLA">🔴 EN FALLA</option><option value="Con Observaciones">🔵 CON OBSERVACIONES</option></select><div class="flex gap-3"><button id="confirmarEstadoBtn" class="flex-1 bg-cyan-600 py-2 rounded-xl">Cambiar</button><button id="cancelarModalBtn" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancelar</button></div></div>`;
     document.body.appendChild(modal); lucide.createIcons();
     const cerrar = () => modal.remove();
@@ -701,7 +837,6 @@ function mostrarModalEstadoManual() {
     });
 }
 
-// Pantalla de PIN y arranque
 function showPinScreen() {
     const root = document.getElementById('root');
     root.innerHTML = `<div class="flex flex-col items-center justify-center min-h-screen p-6"><div class="bg-slate-800 rounded-3xl p-8 w-full max-w-sm border border-slate-700 shadow-2xl"><div class="w-20 h-20 mx-auto bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl flex items-center justify-center mb-6"><i data-lucide="qrcode" class="w-10 h-10 text-white"></i></div><h2 class="text-2xl font-bold text-center mb-2">Acceso Industrial</h2><p class="text-slate-400 text-center text-sm mb-6">Ingrese clave de seguridad</p><input type="password" id="pinInput" maxlength="4" inputmode="numeric" class="w-full bg-slate-900 border border-slate-600 rounded-2xl px-5 py-4 text-center text-2xl tracking-[0.5rem] font-mono focus:ring-2 focus:ring-cyan-500 outline-none" placeholder="••••"><button id="verifyPinBtn" class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 py-3.5 rounded-2xl font-semibold mt-6 flex items-center justify-center gap-2"><i data-lucide="unlock"></i> Validar acceso</button><p class="text-center text-xs text-slate-500 mt-6">Elaborado por N. Bravo · Ingeniería y Servicios Bravo Spa</p></div></div>`;
@@ -716,11 +851,33 @@ function showPinScreen() {
     });
 }
 
-// Cargar datos y arrancar
-loadFromLocalStorage();
-initDefaultData();
-if (!state.lotoAccepted) showPinScreen();
-else render();
+// ============================================================
+// INICIALIZACIÓN CON MANEJO DE PARÁMETRO URL
+// ============================================================
+function init() {
+    loadFromLocalStorage();
+    initDefaultData();
+    // Procesar parámetro ?tag=XXX
+    const urlParams = new URLSearchParams(window.location.search);
+    const tagParam = urlParams.get('tag');
+    if (tagParam) {
+        if (equiposDB[tagParam]) {
+            selectEquipo(tagParam);
+        } else {
+            // Mostrar mensaje de error y no cargar ningún equipo
+            showToast(`❌ TAG "${tagParam}" no existe en la base de datos`, "error");
+            // Asegurar que el dashboard esté vacío
+            state.currentTag = null;
+            state.currentEquipo = null;
+            state.historial = [];
+            if (state.lotoAccepted) render();
+        }
+    }
+    if (!state.lotoAccepted) showPinScreen();
+    else render();
+}
+
+init();
 </script>
 </body>
 </html>
